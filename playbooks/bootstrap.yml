@@ -1,0 +1,59 @@
+---
+# One-time per host, before it's manageable by the rest of this repo.
+# See docs/devops-policy.md §7 ("Bootstrap").
+#
+# Run this against whatever account the data centre handed you (root, or a
+# temporary admin user), supplying that account explicitly — it is
+# deliberately NOT the inventory default (`ansible_user: ansible`, see
+# inventories/dev/group_vars/all.yml), since that account doesn't exist yet:
+#
+#   ansible-playbook playbooks/bootstrap.yml -l <host> \
+#     -u <initial-admin-account> --ask-pass --ask-become-pass \
+#     -e "ansible_control_pubkey=$(cat ~/.ssh/ansible_control.pub)"
+#
+# ansible_control_pubkey is the PUBLIC key of the key pair the control node
+# will use from then on — never pass a private key or password as an
+# extra-var, here or anywhere else in this repo.
+
+- name: Bootstrap the ansible control account
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    bootstrap_ansible_user: ansible
+  tasks:
+    - name: Fail fast if no public key was supplied
+      ansible.builtin.assert:
+        that: ansible_control_pubkey is defined and ansible_control_pubkey | length > 0
+        fail_msg: "Pass -e ansible_control_pubkey=... (a PUBLIC key) — see the comment at the top of this playbook."
+
+    - name: Create the ansible control user
+      ansible.builtin.user:
+        name: "{{ bootstrap_ansible_user }}"
+        system: false
+        create_home: true
+        shell: /bin/bash
+        state: present
+
+    - name: Grant passwordless sudo to the ansible user
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ bootstrap_ansible_user }}"
+        content: "{{ bootstrap_ansible_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+
+    - name: Install the control node's public key
+      ansible.posix.authorized_key:
+        user: "{{ bootstrap_ansible_user }}"
+        key: "{{ ansible_control_pubkey }}"
+        state: present
+
+    - name: Remind that the ansible user's interactive password (if any) belongs in the secret server
+      ansible.builtin.debug:
+        msg: >-
+          ansible user created with SSH-key sudo access and no password set.
+          If a break-glass password is required, set it out of band and store
+          it in the secret server — never in this repo. See
+          docs/devops-policy.md §7.

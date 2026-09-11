@@ -1,0 +1,20 @@
+---
+# See docs/jenkins-worker-node.md §2.1. Both are Java apps — profile.yml's
+# default-JDK JAVA_HOME covers them for ad-hoc/CLI use.
+
+- name: Install Flyway
+  ansible.builtin.include_tasks: _install_archive_tool.yml
+  vars:
+    tool: "{{ jenkins_worker_flyway }}"
+    tool_dest_dir: "{{ jenkins_worker_tools_dir }}/flyway"
+    tool_marker_file: flyway
+
+# Oracle's SQLcl zip already contains a top-level "sqlcl" directory, so unlike
+# the tar-based tools this one is extracted one level up with no
+# --strip-components (unzip doesn't support that flag).
+- name: Install SQLcl
+  ansible.builtin.include_tasks: _install_archive_tool.yml
+  vars:
+    tool: "{{ jenkins_worker_sqlcl | combine({'extra_opts': []}) }}"
+    tool_dest_dir: "{{ jenkins_worker_tools_dir }}"
+    tool_marker_file: sqlcl/bin/sql

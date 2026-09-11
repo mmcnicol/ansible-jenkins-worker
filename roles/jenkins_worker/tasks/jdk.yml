@@ -1,0 +1,23 @@
+---
+# See docs/jenkins-worker-node.md §2. Each JDK lands at
+# {{ jenkins_worker_tools_dir }}/jdk/<name>/ with the tarball's own top-level
+# directory stripped, so JAVA_HOME is always .../jdk/<name> regardless of the
+# upstream archive's internal naming.
+
+- name: Ensure JDK tools directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_tools_dir }}/jdk"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install one JDK
+  ansible.builtin.include_tasks: _install_archive_tool.yml
+  loop: "{{ jenkins_worker_jdks }}"
+  loop_control:
+    loop_var: tool
+    label: "{{ tool.name }}"
+  vars:
+    tool_dest_dir: "{{ jenkins_worker_tools_dir }}/jdk/{{ tool.name }}"
+    tool_marker_file: bin/java

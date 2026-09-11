@@ -1,0 +1,49 @@
+---
+# Sanity check after jenkins_worker.yml runs — see docs/jenkins-worker-node.md
+# §10, step 6. Extends the original "CPU cores + memory" check to also verify
+# every pinned tool actually runs.
+
+- name: Smoke-test a Jenkins worker node
+  hosts: jenkins_workers
+  become: true
+  become_user: "{{ jenkins_worker_user | default('jenkins') }}"
+  gather_facts: true
+  tasks:
+    - name: Report CPU cores and memory
+      ansible.builtin.debug:
+        msg: >-
+          {{ ansible_processor_vcpus }} vCPUs,
+          {{ (ansible_memtotal_mb / 1024) | round(1) }} GB RAM
+
+    - name: Check each JDK reports a version
+      ansible.builtin.command: "{{ jenkins_worker_tools_dir }}/jdk/{{ item.name }}/bin/java -version"
+      loop: "{{ jenkins_worker_jdks }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: _java_versions
+      changed_when: false
+
+    - name: Check each Maven reports a version
+      ansible.builtin.command: "{{ jenkins_worker_tools_dir }}/maven/{{ item.name }}/bin/mvn -v"
+      loop: "{{ jenkins_worker_mavens }}"
+      loop_control:
+        label: "{{ item.name }}"
+      environment:
+        JAVA_HOME: "{{ jenkins_worker_tools_dir }}/jdk/{{ jenkins_worker_default_jdk }}"
+      register: _maven_versions
+      changed_when: false
+
+    - name: Look up the jenkins uid
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ jenkins_worker_user | default('jenkins') }}"
+
+    - name: Check Podman is usable rootless
+      ansible.builtin.command: podman run --rm hello-world
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[jenkins_worker_user | default('jenkins')][1] }}"
+      changed_when: false
+
+    - name: Check Newman is installed
+      ansible.builtin.command: "{{ jenkins_worker_home }}/.npm-global/bin/newman --version"
+      changed_when: false

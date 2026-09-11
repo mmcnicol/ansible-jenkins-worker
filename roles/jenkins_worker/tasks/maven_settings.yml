@@ -1,0 +1,16 @@
+---
+- name: Ensure jenkins .m2 directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_home }}/.m2"
+    state: directory
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0700"
+
+- name: Deploy managed Maven settings.xml
+  ansible.builtin.template:
+    src: settings.xml.j2
+    dest: "{{ jenkins_worker_home }}/.m2/settings.xml"
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0600"

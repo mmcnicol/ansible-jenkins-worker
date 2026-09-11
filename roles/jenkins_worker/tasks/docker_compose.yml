@@ -1,0 +1,26 @@
+---
+# See docs/jenkins-worker-node.md §4.1. A single pinned binary (not
+# podman-compose, deliberately — see docs/jenkins-worker-node.md §4), talking
+# to the rootless Podman socket via DOCKER_HOST.
+
+- name: Ensure docker-compose tools directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_tools_dir }}/docker-compose/{{ jenkins_worker_docker_compose_version }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download pinned docker-compose binary
+  ansible.builtin.get_url:
+    url: "{{ jenkins_worker_docker_compose_url }}"
+    dest: "{{ jenkins_worker_tools_dir }}/docker-compose/{{ jenkins_worker_docker_compose_version }}/docker-compose"
+    checksum: "{{ jenkins_worker_docker_compose_checksum }}"
+    mode: "0755"
+
+- name: Symlink docker-compose onto PATH
+  ansible.builtin.file:
+    src: "{{ jenkins_worker_tools_dir }}/docker-compose/{{ jenkins_worker_docker_compose_version }}/docker-compose"
+    dest: /usr/local/bin/docker-compose
+    state: link
+    force: true

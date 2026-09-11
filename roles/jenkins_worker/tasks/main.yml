@@ -1,0 +1,52 @@
+---
+# See docs/jenkins-worker-node.md for the design rationale behind each step.
+
+- name: Assert /Dev_Data exists and is writable
+  ansible.builtin.stat:
+    path: "{{ dev_data_mount }}"
+  register: _dev_data_stat
+
+- name: Fail fast if /Dev_Data is missing
+  ansible.builtin.assert:
+    that:
+      - _dev_data_stat.stat.exists
+      - _dev_data_stat.stat.isdir
+    fail_msg: >-
+      {{ dev_data_mount }} does not exist. This must be provisioned by the data
+      centre team before this role runs — see docs/server-profiles.md.
+
+- name: Install OS packages (dnf)
+  ansible.builtin.include_tasks: packages.yml
+
+- name: Create the jenkins user
+  ansible.builtin.include_tasks: user.yml
+
+- name: Install pinned JDKs
+  ansible.builtin.include_tasks: jdk.yml
+
+- name: Install pinned Maven
+  ansible.builtin.include_tasks: maven.yml
+
+- name: Deploy Maven settings.xml
+  ansible.builtin.include_tasks: maven_settings.yml
+
+- name: Install Flyway and SQLcl
+  ansible.builtin.include_tasks: flyway_sqlcl.yml
+
+- name: Set default JDK / JAVA_HOME for interactive use
+  ansible.builtin.include_tasks: profile.yml
+
+- name: Configure rootless Podman
+  ansible.builtin.include_tasks: podman.yml
+
+- name: Install docker-compose binary
+  ansible.builtin.include_tasks: docker_compose.yml
+
+- name: Install Node.js and Newman
+  ansible.builtin.include_tasks: node_newman.yml
+
+- name: Deploy jenkins user SSH environment
+  ansible.builtin.include_tasks: ssh_environment.yml
+
+- name: Configure image prune timer
+  ansible.builtin.include_tasks: prune.yml

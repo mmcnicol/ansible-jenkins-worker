@@ -1,0 +1,10 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Run podman-prune.service on a schedule (see docs/devops-policy.md §5)
+
+[Timer]
+OnCalendar={{ jenkins_worker_prune_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

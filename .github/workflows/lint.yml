@@ -1,0 +1,34 @@
+name: lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tooling
+        run: pip install "ansible-core>=2.16" ansible-lint yamllint
+
+      - name: Install collections
+        run: ansible-galaxy collection install -r collections/requirements.yml
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-playbook --syntax-check
+        run: |
+          for pb in playbooks/*.yml; do
+            ansible-playbook "$pb" --syntax-check
+          done
+
+      - name: ansible-lint
+        run: ansible-lint

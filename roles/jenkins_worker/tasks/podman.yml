@@ -1,0 +1,56 @@
+---
+# See docs/jenkins-worker-node.md §4 / §4.1. podman + podman-docker are
+# installed in packages.yml already.
+
+- name: Create Podman storage directory on /Dev_Data
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_containers_dir }}/storage"
+    state: directory
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0700"
+    recurse: true
+
+- name: Set SELinux context for the rootless Podman graphroot
+  community.general.sefcontext:
+    target: "{{ jenkins_worker_containers_dir }}(/.*)?"
+    setype: container_var_lib_t
+    state: present
+  when: ansible_selinux.status is defined and ansible_selinux.status == "enabled"
+  notify: Apply Podman graphroot SELinux context
+
+- name: Ensure jenkins containers config directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_home }}/.config/containers"
+    state: directory
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0700"
+
+- name: Deploy rootless Podman storage.conf for jenkins
+  ansible.builtin.template:
+    src: containers-storage.conf.j2
+    dest: "{{ jenkins_worker_home }}/.config/containers/storage.conf"
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0600"
+
+- name: Enable the jenkins user Podman socket
+  ansible.builtin.systemd:
+    name: podman.socket
+    scope: user
+    state: started
+    enabled: true
+  become: true
+  become_user: "{{ jenkins_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ jenkins_worker_uid }}"
+
+- name: Create the shared Podman network for build containers
+  containers.podman.podman_network:
+    name: "{{ jenkins_worker_podman_network_name }}"
+    state: present
+  become: true
+  become_user: "{{ jenkins_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ jenkins_worker_uid }}"

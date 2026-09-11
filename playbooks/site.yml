@@ -1,0 +1,7 @@
+---
+# Run everything, in order. In practice you'll usually target one playbook
+# with -l <host> instead (see docs/jenkins-worker-node.md §10).
+- name: Import common baseline playbook
+  ansible.builtin.import_playbook: common.yml
+- name: Import Jenkins worker playbook
+  ansible.builtin.import_playbook: jenkins_worker.yml

@@ -1,0 +1,46 @@
+---
+# See docs/jenkins-worker-node.md §7.
+
+- name: Install Node.js
+  ansible.builtin.include_tasks: _install_archive_tool.yml
+  vars:
+    tool: "{{ jenkins_worker_node }}"
+    tool_dest_dir: "{{ jenkins_worker_tools_dir }}/node"
+    tool_marker_file: bin/node
+
+- name: Add Node.js / npm-global to PATH
+  ansible.builtin.template:
+    src: node-path.sh.j2
+    dest: /etc/profile.d/node-path.sh
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure jenkins npm-global directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_home }}/.npm-global"
+    state: directory
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0755"
+
+- name: Point npm's global prefix at a jenkins-owned directory
+  ansible.builtin.template:
+    src: npmrc.j2
+    dest: "{{ jenkins_worker_home }}/.npmrc"
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0644"
+
+- name: Install Newman (pinned version) for jenkins
+  community.general.npm:
+    name: newman
+    version: "{{ jenkins_worker_newman_version }}"
+    global: true
+    executable: "{{ jenkins_worker_tools_dir }}/node/bin/npm"
+    path: "{{ jenkins_worker_home }}"
+  become: true
+  become_user: "{{ jenkins_worker_user }}"
+  environment:
+    PATH: "{{ jenkins_worker_tools_dir }}/node/bin:{{ ansible_env.PATH }}"
+    HOME: "{{ jenkins_worker_home }}"

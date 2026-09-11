@@ -1,0 +1,27 @@
+---
+# See docs/devops-policy.md §7. Roll out on one host first — this can lock
+# you out if the `ansible` key isn't already working.
+
+- name: Set PasswordAuthentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PasswordAuthentication\s+'
+    line: "PasswordAuthentication {{ 'yes' if sshd_password_authentication else 'no' }}"
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: Restart sshd
+
+- name: Set PermitRootLogin
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PermitRootLogin\s+'
+    line: "PermitRootLogin {{ 'yes' if sshd_permit_root_login else 'no' }}"
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: Restart sshd
+
+- name: Set PermitUserEnvironment
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PermitUserEnvironment\s+'
+    line: "PermitUserEnvironment {{ 'yes' if sshd_permit_user_environment else 'no' }}"
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: Restart sshd

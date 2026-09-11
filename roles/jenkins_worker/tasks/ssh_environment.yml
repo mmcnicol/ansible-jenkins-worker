@@ -1,0 +1,33 @@
+---
+# See docs/jenkins-worker-node.md §4.1. Requires roles/common to have set
+# `PermitUserEnvironment yes` in sshd_config — asserted below so this role
+# fails loudly rather than silently deploying a file sshd will ignore.
+
+- name: Confirm sshd allows per-user environment files
+  ansible.builtin.command: sshd -T
+  register: _sshd_dump
+  changed_when: false
+
+- name: Assert PermitUserEnvironment is enabled
+  ansible.builtin.assert:
+    that: "'permituserenvironment yes' in _sshd_dump.stdout | lower"
+    fail_msg: >-
+      sshd does not have PermitUserEnvironment enabled. Run the common role
+      first (see docs/devops-policy.md §7) or DOCKER_HOST/TESTCONTAINERS_RYUK_DISABLED
+      won't reach the SSH-launched Jenkins agent.
+
+- name: Ensure jenkins .ssh directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_home }}/.ssh"
+    state: directory
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0700"
+
+- name: Deploy jenkins SSH session environment
+  ansible.builtin.template:
+    src: ssh-environment.j2
+    dest: "{{ jenkins_worker_home }}/.ssh/environment"
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0600"

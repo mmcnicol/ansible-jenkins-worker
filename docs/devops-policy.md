@@ -213,6 +213,17 @@ timers laid down by the role.
   pass them via `--extra-vars` from Jenkins credentials. Ansible Vault is a stopgap only —
   and in a public repo one weak passphrase = exposure. Prefer the secret server you
   already run; integrate, don't duplicate.
+- **Commercial JDK licensing.** Where a project pins Oracle's JDK rather than a free
+  OpenJDK build, check whether that use falls under Oracle's commercial license terms
+  (Oracle JDK 8+ updates generally require a Java SE subscription for production use
+  outside personal/OTN terms). Prefer a free build (Red Hat build of OpenJDK, Temurin)
+  unless a specific project genuinely needs Oracle JDK — see
+  [jenkins-worker-node.md §2](jenkins-worker-node.md#2-jdk-and-maven--install-approach).
+- **No credentials embedded in config files shipped to a host** (e.g. a Maven
+  `settings.xml` with a plaintext repository password). Inject secrets per-build from
+  Jenkins Credentials, or at minimum use `settings-security.xml` encryption — never a
+  static plaintext secret sitting on disk. See
+  [jenkins-worker-node.md §2.2](jenkins-worker-node.md#22-maven-settingsxml-and-the-embedded-nexus-credentials).
 - **TLS everywhere.** Every web service behind TLS with the internal CA, renewal
   automated. Terminate either at the app (Jenkins `--httpsPort`, Nexus jetty-https,
   registry `tls:`) or at a shared reverse proxy (nginx / Caddy / HAProxy) — a proxy is

@@ -1,0 +1,20 @@
+---
+- name: Install baseline packages
+  ansible.builtin.dnf:
+    name: "{{ common_base_packages }}"
+    state: present
+
+- name: Enable and start chronyd
+  ansible.builtin.systemd:
+    name: chronyd
+    state: started
+    enabled: true
+
+- name: Configure sshd hardening
+  ansible.builtin.include_tasks: sshd.yml
+
+- name: Configure automatic-update policy
+  ansible.builtin.include_tasks: dnf_updates.yml
+
+- name: Configure firewalld
+  ansible.builtin.include_tasks: firewalld.yml

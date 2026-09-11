@@ -1,0 +1,58 @@
+<!--
+  {{ ansible_managed }}
+
+  Deliberately no plaintext secrets in this file — see docs/jenkins-worker-node.md §2.2
+  and docs/devops-policy.md §7. The <password> values below interpolate an environment
+  variable that a Jenkins Credentials Binding step sets for the duration of one build
+  (withCredentials([usernamePassword(...)])); nothing sensitive lands on disk here.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.1.0">
+  <localRepository>{{ jenkins_worker_home }}/.m2/repository</localRepository>
+
+  <servers>
+    {% for repo in jenkins_worker_maven_nexus_repos %}
+    {% if repo.requires_auth | default(false) %}
+    <server>
+      <id>{{ repo.id }}</id>
+      <username>{{ repo.username }}</username>
+      <password>${env.{{ repo.password_env_var }}}</password>
+    </server>
+    {% endif %}
+    {% endfor %}
+  </servers>
+
+  <mirrors>
+    {% for repo in jenkins_worker_maven_nexus_repos %}
+    {% if repo.mirror_of is defined %}
+    <mirror>
+      <id>{{ repo.id }}</id>
+      <mirrorOf>{{ repo.mirror_of }}</mirrorOf>
+      <url>{{ repo.url }}</url>
+    </mirror>
+    {% endif %}
+    {% endfor %}
+  </mirrors>
+
+  <profiles>
+    <profile>
+      <id>internal-repos</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <repositories>
+        {% for repo in jenkins_worker_maven_nexus_repos %}
+        {% if repo.mirror_of is not defined %}
+        <repository>
+          <id>{{ repo.id }}</id>
+          <url>{{ repo.url }}</url>
+        </repository>
+        {% endif %}
+        {% endfor %}
+      </repositories>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>internal-repos</activeProfile>
+  </activeProfiles>
+</settings>

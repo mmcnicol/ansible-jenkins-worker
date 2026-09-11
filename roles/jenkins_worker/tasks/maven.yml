@@ -1,0 +1,22 @@
+---
+# See docs/jenkins-worker-node.md §2. Not put on the global PATH — selected
+# per Jenkins job via tool config, or via /etc/profile.d for interactive use
+# (see profile.yml).
+
+- name: Ensure Maven tools directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_tools_dir }}/maven"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install one Maven
+  ansible.builtin.include_tasks: _install_archive_tool.yml
+  loop: "{{ jenkins_worker_mavens }}"
+  loop_control:
+    loop_var: tool
+    label: "{{ tool.name }}"
+  vars:
+    tool_dest_dir: "{{ jenkins_worker_tools_dir }}/maven/{{ tool.name }}"
+    tool_marker_file: bin/mvn

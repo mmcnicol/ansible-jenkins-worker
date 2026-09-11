@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Prune unused Podman images/volumes for {{ jenkins_worker_user }}
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman system prune -f --filter until={{ jenkins_worker_prune_filter_until }}
+ExecStart=/usr/bin/podman volume prune -f

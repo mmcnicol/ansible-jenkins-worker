@@ -1,0 +1,62 @@
+---
+# See docs/jenkins-worker-node.md §3.
+#
+# jenkins is a locked, system, key-only-SSH account with a real shell — needed
+# both for the controller's SSH-launched agent and for rootless Podman /
+# `systemctl --user`. It is never given a password, even during setup: every
+# step below runs as root/ansible via become, not as an interactive jenkins
+# login.
+
+- name: Create jenkins system user
+  ansible.builtin.user:
+    name: "{{ jenkins_worker_user }}"
+    system: true
+    create_home: true
+    home: "{{ jenkins_worker_home }}"
+    shell: /bin/bash
+    password_lock: true
+    state: present
+  register: _jenkins_user
+
+- name: Record jenkins uid for later systemd --user / rootless Podman tasks
+  ansible.builtin.set_fact:
+    jenkins_worker_uid: "{{ _jenkins_user.uid }}"
+
+- name: Install authorized_keys for jenkins (controller agent-launch key)
+  ansible.posix.authorized_key:
+    user: "{{ jenkins_worker_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ jenkins_worker_authorized_keys }}"
+  when: jenkins_worker_authorized_keys | length > 0
+
+- name: Check for an existing subuid range
+  ansible.builtin.command: "getent subuid {{ jenkins_worker_user }}"
+  register: _subuid_check
+  changed_when: false
+  failed_when: false
+
+- name: Check for an existing subgid range
+  ansible.builtin.command: "getent subgid {{ jenkins_worker_user }}"
+  register: _subgid_check
+  changed_when: false
+  failed_when: false
+
+- name: Assign a subuid/subgid range for rootless Podman
+  ansible.builtin.command: >-
+    usermod
+    --add-subuids 200000-265535
+    --add-subgids 200000-265535
+    {{ jenkins_worker_user }}
+  when: _subuid_check.rc != 0 or _subgid_check.rc != 0
+  changed_when: true
+
+- name: Check whether linger is already enabled for jenkins
+  ansible.builtin.stat:
+    path: "/var/lib/systemd/linger/{{ jenkins_worker_user }}"
+  register: _linger_stat
+
+- name: Enable linger for jenkins (rootless Podman / systemd --user without a login session)
+  ansible.builtin.command: "loginctl enable-linger {{ jenkins_worker_user }}"
+  when: not _linger_stat.stat.exists
+  changed_when: true

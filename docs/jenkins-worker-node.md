@@ -8,17 +8,17 @@ Connection method assumed: **SSH, controller-initiated** ("Launch agents via SSH
 ## 1. What the `jenkins_worker` role will do
 
 1. Create the `jenkins` system user (see §3).
-2. Install **2 × OpenJDK** and **2 × Maven** as pinned tarballs under `/Dev_Data/tools`
-   (see §2).
-3. Deploy a managed Maven `settings.xml` (no credentials in it).
-4. Install and configure **rootless Podman** for `jenkins`, storage on `/Dev_Data`
-   (see §4).
+2. Install the pinned **JDKs**, **Maven**, **Flyway** and **SQLcl** as tarballs under
+   `/Dev_Data/tools` (see §2, §2.1).
+3. Deploy a managed Maven `settings.xml` (no credentials in it, see §2.2).
+4. Install and configure **rootless Podman** for `jenkins` (storage on `/Dev_Data`,
+   network, `podman-docker`, `docker-compose` binary, see §4).
 5. Lay down the **prune** user systemd timer (see §5).
-6. Install one or two packages via `dnf` — example placeholder, swap for the real tool
-   (see §6).
-7. Publish host facts/labels so the controller knows what the node offers.
+6. Install the OS packages via `dnf` (see §6).
+7. Install **Node.js**, and **Newman** via npm, for Postman API tests (see §7).
+8. Publish host facts/labels so the controller knows what the node offers.
 
-Controller-side node creation is **not** done by this role (see §7).
+Controller-side node creation is **not** done by this role (see §10).
 
 ---
 
@@ -27,32 +27,93 @@ Controller-side node creation is **not** done by this role (see §7).
 **Recommendation: pinned vendor tarballs to `/Dev_Data/tools`, exposed to Jenkins as named
 tools.** Rationale:
 
-- You explicitly want *specific* versions, and two of each **side by side** — `alternatives`
-  juggling and "whatever AppStream ships this month" both fight that.
+- You want *specific* versions, and **four** JDKs / **at least one** Maven side by side —
+  `alternatives` juggling and "whatever AppStream ships this month" both fight that.
 - Decouples the workers from the OS update cadence.
 - This is exactly how Jenkins' own tool installers work; we're just pre-staging them.
 
+Real fleet shape (versions genericised — **do not commit real version numbers to this
+public repo**; set them as `host_vars`/`group_vars` in a private inventory or vault, using
+the placeholders below only as examples of the variable shape):
+
+| Role var (example name) | Example placeholder | Real-world equivalent you described |
+|---|---|---|
+| `jdk_versions.jdk8` | `8u<build>` | Currently **Oracle** JDK 8 — see licensing note below |
+| `jdk_versions.jdk11` | `11.0.x` | Red Hat build of OpenJDK |
+| `jdk_versions.jdk17_a` | `17.0.x-a` | Red Hat build of OpenJDK (older patch, pinned for a project) |
+| `jdk_versions.jdk17_b` | `17.0.x-b` | Red Hat build of OpenJDK (newer patch) |
+| `maven_versions.default` | `3.8.x` | your current `/opt/maven` |
+
+> **Oracle JDK 8 licensing flag.** Since January 2019, Oracle's JDK 8 updates require a
+> commercial license (Java SE subscription) for most production/commercial use — "free"
+> Oracle downloads are for personal use or specific OTN terms only. You're already
+> standardising the newer JDKs on the **Red Hat build of OpenJDK**; the same free, actively
+> patched OpenJDK 8 builds exist (Red Hat's `java-1.8.0-openjdk` from AppStream, or
+> Temurin 8 tarballs) and are drop-in for a build JDK. Worth raising with whoever owns
+> license compliance before replicating Oracle JDK 8 onto 6 more nodes.
+
 | Tool | Source | Path | Verify |
 |------|--------|------|--------|
-| OpenJDK ×2 | **Adoptium Temurin** tarballs (e.g. 17.0.x, 21.0.x — exact builds set in `group_vars`) | `/Dev_Data/tools/jdk/temurin-<version>` | SHA-256 checksum (mandatory) |
-| Maven ×2 | **Apache Maven** binary tarballs (e.g. 3.8.8 and 3.9.x) | `/Dev_Data/tools/maven/apache-maven-<version>` | SHA-512 checksum + PGP signature |
+| JDKs (×4) | **Red Hat build of OpenJDK** tarballs where available, else **Temurin** | `/Dev_Data/tools/jdk/<label>-<version>` | SHA-256 checksum (mandatory) |
+| Maven | **Apache Maven** binary tarball | `/Dev_Data/tools/maven/apache-maven-<version>` | SHA-512 checksum + PGP signature |
 
 - Keep a **packaged** JDK (`dnf install java-21-openjdk-headless`) as the OS default for
-  system tooling; the Temurin builds are for *builds*, selected per job.
-- Do **not** put either Maven ambiguously on the global `PATH`. Pick one default via a
-  `profile.d` script if you want a shell default; let Jenkins select per job otherwise.
+  system tooling; the pinned tarball builds are for *builds*, selected per job.
+- Do **not** put any JDK/Maven ambiguously on the global `PATH`. Let Jenkins tool
+  configuration select per job (see below); optionally set one default via `profile.d`
+  for interactive troubleshooting only.
 - Download source: upstream now (with `checksum:` always set) via an `artifact_base_url`
   variable; flip that to the Nexus `raw` repo in Phase 2.
+- **`JAVA_HOME`**: you noted `/opt/maven` needed `JAVA_HOME` set and it hadn't been. The
+  role must set this reliably two ways: (a) Jenkins' JDK tool config sets `JAVA_HOME` for
+  the duration of a build automatically — this is the primary mechanism, works
+  per-job/per-JDK; (b) a `/etc/profile.d/jdk-default.sh` exported by the role, pointing at
+  one designated default JDK, so `ssh jenkins@host` / ad-hoc shell troubleshooting and any
+  tool invoked outside a Jenkins job (SQLcl, Flyway — both are Java apps) also finds a
+  JDK without extra steps.
+- **`.m2` location**: you found `.m2` currently at `/home/jenkins/.m2/repository` — an
+  unbounded, ever-growing local repository cache sitting wherever `jenkins`'s home happens
+  to be. This is a live example of why §3 puts `jenkins`'s home on `/Dev_Data`: doing that
+  on the new nodes puts `.m2` on external storage automatically, no separate
+  `<localRepository>` override needed.
 
-In **Jenkins → Manage Jenkins → Tools**, add fixed entries (install automatically = off):
+In **Jenkins → Manage Jenkins → Tools**, add fixed entries (install automatically = off),
+one per row in the table above, using the paths the role lays down. Jobs then request the
+tool they need by label. Because every worker uses identical paths, this config is
+identical across the fleet and belongs in JCasC (Phase 3).
 
-- `jdk-17` → `/Dev_Data/tools/jdk/temurin-17.0.x`
-- `jdk-21` → `/Dev_Data/tools/jdk/temurin-21.0.x`
-- `maven-3.8` → `/Dev_Data/tools/maven/apache-maven-3.8.8`
-- `maven-3.9` → `/Dev_Data/tools/maven/apache-maven-3.9.x`
+### 2.1 Other pinned Java/CLI tools — same pattern
 
-Jobs then request the tool they need. Because every worker uses the same paths, this
-config is identical across the fleet and belongs in JCasC (Phase 3).
+You're also installing **Flyway** and **SQLcl**, both distributed only as tarballs and
+both Java applications (need the `JAVA_HOME` handling above). Treat them exactly like
+Maven:
+
+| Tool | Path | Notes |
+|------|------|-------|
+| Flyway | `/Dev_Data/tools/flyway/flyway-<version>` | pin, checksum |
+| SQLcl | `/Dev_Data/tools/sqlcl/sqlcl-<version>` | pin, checksum; needs a JDK on `JAVA_HOME`/`PATH` |
+
+### 2.2 Maven `settings.xml` and the embedded Nexus credentials
+
+You mentioned the current `settings.xml` embeds username/password for a generic Nexus
+`maven` user in plain text on the worker. That's exactly the kind of thing
+[devops-policy.md §7](devops-policy.md#7-users-ssh-and-secrets) says shouldn't sit in a
+file on disk. You already flagged this as a known-debt item, not something to fix inside
+this project right now — noting it here so it's tracked. Better shape, worth doing when
+Nexus lands in Phase 2 (ties into "one Nexus role for humans, one for CI" from the
+roadmap):
+
+- Keep `settings.xml` itself free of secrets — reference `${env.NEXUS_MAVEN_PASSWORD}` (or
+  a Maven `<server><password>` that reads from an environment variable via a settings
+  interpolation, or `settings-security.xml` with a master-password-encrypted value).
+  Maven doesn't support `${env.*}` in `<password>` natively — the common patterns are
+  either a Jenkins **Credentials Binding** step that writes a short-lived
+  `settings-local.xml`/`-s` file per build, or an encrypted password via
+  `settings-security.xml` (better than plaintext, still a static secret on disk).
+  Short-lived, per-build injection from Jenkins Credentials is the stronger fix.
+- The repo/settings structure (RH repo, PrimeFaces repo, your Nexus-hosted repos) is fine
+  as-is and belongs in the role as a managed template — just without the password baked
+  in.
 
 ---
 
@@ -112,6 +173,42 @@ service.
   fix a few builds.
 - `docker build` → `podman build` is drop-in; consider `buildah` for advanced cases.
 
+### 4.1 What you're actually running — matches this design, made idempotent
+
+Confirmed shape: **`podman-docker`** (gives a `docker` → `podman` CLI shim) +
+**rootless `podman.socket`** + the real **`docker-compose`** binary (not
+`podman-compose`, deliberately) pointed at that socket via `DOCKER_HOST`. That's a sound
+combination — `docker-compose` needs a Docker-API-speaking socket, and Podman's socket
+speaks that API. The role will make each step idempotent instead of the one-off manual
+commands:
+
+| Manual command you ran | Role equivalent |
+|---|---|
+| `sudo -u jenkins systemctl --user enable --now podman.socket` | `become_user: jenkins` + `ansible.builtin.systemd` (`scope: user`), gated on linger being enabled first |
+| `sudo -u jenkins podman network create MyNetwork` | `containers.podman.podman_network` (module is idempotent; add `containers.podman` to `collections/requirements.yml`); network name as a `group_vars` variable |
+| `docker-compose` downloaded from the GitHub releases page | Same "pinned binary" pattern as JDK/Maven: `get_url` with a pinned version + checksum to `/Dev_Data/tools/docker-compose/<version>/docker-compose`, symlinked into a `jenkins`-owned bin dir on `PATH` |
+| `podman-docker` package | `dnf` (approach 1 — legitimate OS package) |
+
+**Environment variables** (`DOCKER_HOST`, `TESTCONTAINERS_RYUK_DISABLED`) are currently set
+in the Jenkins node's *Node Properties* in the UI — manual, controller-side, not in this
+repo. Two ways to make that reproducible instead, in order of preference:
+
+1. **`~jenkins/.ssh/environment`**, populated by the role, with `PermitUserEnvironment yes`
+   added to `sshd_config` (scoped — only takes effect for keys/sessions where the file
+   exists). This is visible to the exact process the controller launches over SSH,
+   regardless of shell init files, and is fully Ansible-managed.
+2. Keep them as manual Jenkins **Node Properties** for now, added to the controller-side
+   checklist in §10 — simplest, but drifts from "config as code" and has to be repeated by
+   hand for 6 nodes (and every node after).
+
+Recommendation: (1), rolled into the `jenkins_worker` role; migrate to JCasC node
+definitions in Phase 3 either way.
+
+`TESTCONTAINERS_RYUK_DISABLED=true` is a known workaround for Ryuk (Testcontainers'
+cleanup sidecar) under rootless Podman. Disabling it means Testcontainers won't
+auto-remove containers after a crashed/killed JVM — which is exactly what the **prune
+timer** in §5 exists to mop up. Keep both.
+
 ---
 
 ## 5. Image prune
@@ -130,16 +227,81 @@ build container is running. Logs land in `journalctl --user -u podman-prune`.
 
 ---
 
-## 6. The `dnf` example
+## 6. Packages installed via `dnf`
 
-The role installs a short `worker_packages` list via `ansible.builtin.dnf`. Ships with a
-harmless placeholder (`git`, `jq`) — replace with the one or two tools you actually
-install this way. This is the sanctioned use of approach (1) in the policy: OS utilities,
-not services.
+Turns out this list is a bit longer than "one or two" — all legitimate approach-(1) OS
+packages, not services:
+
+| Package | Why |
+|---|---|
+| `git` | SCM |
+| `python3` | Ansible itself needs an interpreter on the target; also general scripting. Worth an explicit task even though RHEL 10 likely ships it, so the role doesn't silently depend on the base image. |
+| `podman-docker` | `docker` CLI shim over Podman (§4.1) |
+| `sshpass` | see §11 — kept for now as a known-debt item, not removed by this role |
+
+Modelled as a `worker_packages` list var in the role so it's easy to add/remove per
+project without touching tasks.
+
+## 7. Node.js, npm, Newman (Postman API tests)
+
+Same pinned-version reasoning as JDK/Maven: **tarball to `/Dev_Data/tools`**, not `dnf`
+and not `nvm` (version managers are for laptops per
+[devops-policy.md §2](devops-policy.md#2-how-to-install-a-software-tool-or-run-a-service)).
+
+- **Node.js**: official prebuilt `linux-x64` tarball, pinned version + checksum, to
+  `/Dev_Data/tools/node/node-<version>`, exposed on `PATH` the same way as Maven (Jenkins
+  tool config if you install the NodeJS plugin, or a fixed `PATH` entry per job/label —
+  your call once you see how many jobs need it).
+- **npm global installs (Newman)**: default `npm install -g` wants to write under the
+  Node install's own `lib/node_modules`, which would need root if Node lives under a
+  root-owned path. Fix: set npm's global prefix to a `jenkins`-owned directory
+  (`~jenkins/.npm-global`, via `.npmrc`) so `newman` installs without `sudo` and Ansible
+  can manage it idempotently — the `community.general.npm` module supports `state:
+  present` with a pinned `version:`, which is preferable to a hand-rolled shell task.
+- Pin Newman's version explicitly; it's what actually executes the Postman collections,
+  so an unpinned `npm install -g newman` (always-latest) is exactly the kind of drift this
+  whole project exists to avoid.
+- **Future option, not a change for now**: since you're already on rootless Podman, the
+  official `postman/newman` container image is an alternative to installing Node/npm/
+  Newman on the host at all — worth a look once Phase 1 is stable, not a blocker today.
+
+## 8. Known technical debt inherited from the current fleet
+
+Flagging these because they came up above; none block the RHEL 10 rollout, but they're
+worth a backlog item each:
+
+1. **Oracle JDK 8 licensing** — see §2. Likely fixable by swapping to a free OpenJDK 8
+   build with no behaviour change for most projects.
+2. **Nexus credentials embedded in `settings.xml`** — see §2.2. Fix ties naturally into
+   Nexus Phase 2 (per-purpose service accounts, secrets injected per-build rather than
+   baked into a file).
+3. **`sshpass`** — you already flagged this yourself as a future improvement (replace
+   password-based SSH in scripts with key-based auth per job/target). The role installs
+   it as-is for parity with the current fleet; don't extend its use in new projects.
+
+## 9. Open decision: firewalld posture on new nodes
+
+The existing RHEL 9 workers run with no firewall enabled. [devops-policy.md
+§8](devops-policy.md#8-other-server-setup-topics-to-standardise) treats `firewalld` as a
+baseline `common`-role item. Two ways to reconcile that for the RHEL 10 fleet:
+
+- **Enable it on the new nodes**, with the exact ports these tools need opened explicitly
+  (SSH in from the controller; anything the job workloads themselves need to expose, e.g.
+  a port a Testcontainers-based service binds for a test run) — a real hardening
+  improvement, paid for by having to enumerate every port a build might need up front and
+  keeping that list current as projects change.
+- **Match the existing fleet** (leave it disabled) for consistency, and track "enable
+  firewalld fleet-wide" as its own later hardening project covering RHEL 9 and RHEL 10
+  together, rather than having the new nodes behave differently from the old ones.
+
+**Decision:** match the existing fleet — `firewalld` stays disabled on the new RHEL 10
+nodes for now (`firewalld_enabled: false` in the role). Track "enable firewalld
+fleet-wide, RHEL 9 and RHEL 10 together" as its own hardening backlog item rather than
+diverging the new nodes from the old ones.
 
 ---
 
-## 7. Manual / prerequisite steps (not done by the worker playbook)
+## 10. Manual / prerequisite steps (not done by the worker playbook)
 
 ### Before the playbook
 
@@ -176,7 +338,7 @@ against the Jenkins REST API once you have more than two nodes — you will have
 
 ---
 
-## 8. SSH keys / known_hosts — what's actually needed
+## 11. SSH keys / known_hosts — what's actually needed
 
 | Direction | Needed? | Where |
 |-----------|---------|-------|
@@ -192,7 +354,7 @@ role guarantees that.
 
 ---
 
-## 9. Testing
+## 12. Testing
 
 Per your answer, testing will use **AlmaLinux / Rocky 10** cloud VMs (RHEL 10 rebuilds, no
 subscription friction, behaviour effectively identical for this work). Spun up only when

@@ -1,0 +1,6 @@
+---
+- name: Configure Jenkins worker nodes
+  hosts: jenkins_workers
+  become: true
+  roles:
+    - jenkins_worker

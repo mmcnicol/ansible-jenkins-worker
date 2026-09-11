@@ -1,0 +1,6 @@
+{{ ansible_managed | comment }}
+# Default JAVA_HOME for interactive shells and any tool invoked outside a
+# Jenkins job (Flyway, SQLcl). Jenkins jobs get their JAVA_HOME per build from
+# Jenkins tool config instead — see docs/jenkins-worker-node.md §2.
+export JAVA_HOME="{{ jenkins_worker_tools_dir }}/jdk/{{ jenkins_worker_default_jdk }}"
+export PATH="$JAVA_HOME/bin:{{ jenkins_worker_tools_dir }}/flyway:{{ jenkins_worker_tools_dir }}/sqlcl/bin:$PATH"

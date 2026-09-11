@@ -1,0 +1,8 @@
+---
+- name: Deploy default JAVA_HOME profile script
+  ansible.builtin.template:
+    src: jdk-default.sh.j2
+    dest: /etc/profile.d/jdk-default.sh
+    owner: root
+    group: root
+    mode: "0644"

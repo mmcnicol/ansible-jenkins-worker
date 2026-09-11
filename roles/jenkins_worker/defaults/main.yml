@@ -1,0 +1,118 @@
+---
+# jenkins_worker role defaults.
+#
+# All versions/URLs/checksums below are placeholders illustrating the variable
+# shape — see docs/jenkins-worker-node.md §2. Override every one of them in a
+# private group_vars/host_vars file (not committed with real values) before
+# running this role for real.
+#
+# Sources needing an authenticated/manual download (Red Hat build of OpenJDK
+# from access.redhat.com, Oracle SQLcl) can't be `get_url`'d directly with a
+# stable public link. Until Nexus (Phase 2) exists as a "raw" mirror, stage
+# those tarballs yourself and point `jenkins_worker_artifact_base_url` at
+# wherever you host them (an internal file share, S3-compatible bucket, etc).
+jenkins_worker_artifact_base_url: ""  # e.g. https://nexus.example.internal/repository/raw-tools
+
+jenkins_worker_user: jenkins
+jenkins_worker_home: "{{ dev_data_mount }}/jenkins"
+jenkins_worker_tools_dir: "{{ dev_data_mount }}/tools"
+
+# Public key(s) authorised to SSH in as jenkins_worker_user — normally just the
+# Jenkins controller's agent-launch key. Set in a private group_vars file.
+jenkins_worker_authorized_keys: []
+
+# --- JDKs -------------------------------------------------------------------
+# Each entry becomes /Dev_Data/tools/jdk/<name>. Public Temurin builds shown as
+# a working example; swap to Red Hat build of OpenJDK per docs/jenkins-worker-node.md
+# if that's what a given project needs.
+jenkins_worker_jdks:
+  - name: jdk8
+    url: "https://github.com/adoptium/temurin8-binaries/releases/download/EXAMPLE/OpenJDK8U-jdk_x64_linux_hotspot_EXAMPLE.tar.gz"
+    checksum: "sha256:REPLACE_ME"
+  - name: jdk11
+    url: "https://github.com/adoptium/temurin11-binaries/releases/download/EXAMPLE/OpenJDK11U-jdk_x64_linux_hotspot_EXAMPLE.tar.gz"
+    checksum: "sha256:REPLACE_ME"
+  - name: jdk17a
+    url: "https://github.com/adoptium/temurin17-binaries/releases/download/EXAMPLE/OpenJDK17U-jdk_x64_linux_hotspot_EXAMPLE.tar.gz"
+    checksum: "sha256:REPLACE_ME"
+  - name: jdk17b
+    url: "https://github.com/adoptium/temurin17-binaries/releases/download/EXAMPLE/OpenJDK17U-jdk_x64_linux_hotspot_EXAMPLE.tar.gz"
+    checksum: "sha256:REPLACE_ME"
+
+# The JDK label from the list above that /etc/profile.d and JAVA_HOME default to
+# for interactive/ad-hoc use (Flyway, SQLcl). Per-job Jenkins builds should
+# still select their JDK explicitly via Jenkins tool config.
+jenkins_worker_default_jdk: jdk17b
+
+# --- Maven --------------------------------------------------------------------
+jenkins_worker_mavens:
+  - name: maven3.8
+    url: "https://archive.apache.org/dist/maven/maven-3/EXAMPLE/binaries/apache-maven-EXAMPLE-bin.tar.gz"
+    checksum: "sha512:REPLACE_ME"
+
+jenkins_worker_default_maven: maven3.8
+
+# --- Flyway / SQLcl -----------------------------------------------------------
+jenkins_worker_flyway:
+  name: flyway
+  url: "https://github.com/flyway/flyway/releases/download/EXAMPLE/flyway-commandline-EXAMPLE-linux-x64.tar.gz"
+  checksum: "sha256:REPLACE_ME"
+
+# SQLcl requires an Oracle account to download — no stable public URL. Point
+# this at your internal staging location.
+jenkins_worker_sqlcl:
+  name: sqlcl
+  url: "{{ jenkins_worker_artifact_base_url }}/sqlcl-EXAMPLE.zip"
+  checksum: "sha256:REPLACE_ME"
+
+# --- Node.js / Newman ----------------------------------------------------------
+jenkins_worker_node:
+  name: node
+  url: "https://nodejs.org/dist/EXAMPLE/node-EXAMPLE-linux-x64.tar.xz"
+  checksum: "sha256:REPLACE_ME"
+
+jenkins_worker_newman_version: "REPLACE_ME"  # e.g. 6.2.1 — pin, don't leave unpinned
+
+# --- docker-compose (talks to the Podman socket via DOCKER_HOST) --------------
+jenkins_worker_docker_compose_version: "REPLACE_ME"  # e.g. v2.29.2
+jenkins_worker_docker_compose_url: >-
+  https://github.com/docker/compose/releases/download/{{ jenkins_worker_docker_compose_version }}/docker-compose-linux-x86_64
+jenkins_worker_docker_compose_checksum: "sha256:REPLACE_ME"
+
+# --- Podman ---------------------------------------------------------------
+jenkins_worker_podman_network_name: jenkins-net
+jenkins_worker_containers_dir: "{{ dev_data_mount }}/jenkins/containers"
+
+# --- Maven settings.xml (see docs/jenkins-worker-node.md §2.2) ---------------
+# No passwords here — `requires_auth: true` entries reference an environment
+# variable a Jenkins Credentials Binding step sets for the duration of one
+# build. Genericised example shape; real repo IDs/URLs belong in a private
+# group_vars file.
+jenkins_worker_maven_nexus_repos:
+  - id: internal-releases
+    url: "https://nexus.example.internal/repository/maven-releases/"
+    username: maven
+    password_env_var: NEXUS_MAVEN_PASSWORD
+    requires_auth: true
+  - id: internal-central-proxy
+    url: "https://nexus.example.internal/repository/maven-central/"
+    mirror_of: central
+    username: maven
+    password_env_var: NEXUS_MAVEN_PASSWORD
+    requires_auth: true
+  - id: redhat-ga
+    url: "https://maven.repository.redhat.com/ga/"
+  - id: primefaces
+    url: "https://repository.primefaces.org"
+
+# --- OS packages via dnf (approach 1 — see docs/devops-policy.md §2) ----------
+jenkins_worker_packages:
+  - git
+  - python3
+  - podman
+  - podman-docker
+  - sshpass  # known-debt item, see docs/jenkins-worker-node.md §8 — kept for fleet parity
+
+# --- Image prune timer (see docs/devops-policy.md §5) -------------------------
+jenkins_worker_prune_on_calendar: "weekly"
+jenkins_worker_prune_filter_until: "720h"

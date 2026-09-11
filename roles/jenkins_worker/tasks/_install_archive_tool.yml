@@ -1,0 +1,43 @@
+---
+# Shared building block: download one pinned, checksummed archive to the
+# target and extract it (top-level directory stripped) into tool_dest_dir,
+# skipping entirely if tool_marker_file already exists there. Included with a
+# `tool: {name, url, checksum}` var plus `tool_dest_dir` and `tool_marker_file`.
+#
+# Used for JDKs, Maven, Flyway, SQLcl and Node.js — anything installed as a
+# pinned tarball to /Dev_Data/tools (see docs/devops-policy.md §2).
+
+- name: "Check whether tool is already installed: {{ tool.name }}"
+  ansible.builtin.stat:
+    path: "{{ tool_dest_dir }}/{{ tool_marker_file }}"
+  register: _tool_marker
+
+- name: "Install tool: {{ tool.name }}"
+  when: not _tool_marker.stat.exists
+  block:
+    - name: "Download archive: {{ tool.name }}"
+      ansible.builtin.get_url:
+        url: "{{ tool.url }}"
+        dest: "/var/tmp/{{ tool.name }}.archive"
+        checksum: "{{ tool.checksum }}"
+        mode: "0644"
+
+    - name: "Create destination directory for {{ tool.name }}"
+      ansible.builtin.file:
+        path: "{{ tool_dest_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "Extract {{ tool.name }}"
+      ansible.builtin.unarchive:
+        src: "/var/tmp/{{ tool.name }}.archive"
+        dest: "{{ tool_dest_dir }}"
+        remote_src: true
+        extra_opts: "{{ tool.extra_opts | default(['--strip-components=1']) }}"
+
+    - name: "Remove downloaded archive for {{ tool.name }}"
+      ansible.builtin.file:
+        path: "/var/tmp/{{ tool.name }}.archive"
+        state: absent

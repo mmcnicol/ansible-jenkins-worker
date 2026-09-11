@@ -1,0 +1,23 @@
+---
+# Baseline vars for every managed host, regardless of role.
+
+ansible_user: ansible
+ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+
+# Root partition is sized by the data centre team; this is the mount point they
+# provision for us, sized to grow independently of root. See docs/server-profiles.md.
+dev_data_mount: /Dev_Data
+
+# Fleet-wide posture decision (2026-09): the existing RHEL 9 workers run with no
+# firewall, so the new RHEL 10 nodes match that for now rather than diverging.
+# Tracked as its own later hardening project covering the whole fleet.
+# See docs/jenkins-worker-node.md §9.
+firewalld_enabled: false
+
+# sshd hardening applied by roles/common. PermitUserEnvironment is required for the
+# jenkins_worker role's per-user ~/.ssh/environment approach (see
+# docs/jenkins-worker-node.md §4.1) — it only takes effect for accounts that actually
+# have an ~/.ssh/environment file, so this is safe to enable fleet-wide.
+sshd_password_authentication: false
+sshd_permit_root_login: false
+sshd_permit_user_environment: true

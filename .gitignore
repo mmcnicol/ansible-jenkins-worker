@@ -1,0 +1,14 @@
+# Private inventory overrides — real hostnames, real pinned versions/checksums,
+# anything environment-specific. Keep the example files in inventories/dev/ as
+# generic templates; put real values in files matching these patterns instead.
+*.local.yml
+*.local.yaml
+inventories/*/group_vars/*.secret.yml
+inventories/*/host_vars/*.secret.yml
+.vault_pass
+
+# Ansible / Python
+*.retry
+__pycache__/
+*.pyc
+.ansible/

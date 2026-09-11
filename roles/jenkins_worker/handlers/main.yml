@@ -1,0 +1,4 @@
+---
+- name: Apply Podman graphroot SELinux context
+  ansible.builtin.command: "restorecon -Rv {{ jenkins_worker_containers_dir }}"
+  changed_when: true

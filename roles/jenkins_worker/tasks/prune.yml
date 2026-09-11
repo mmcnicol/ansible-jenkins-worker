@@ -1,0 +1,39 @@
+---
+# See docs/devops-policy.md §5 and docs/jenkins-worker-node.md §5. A per-host
+# user systemd timer, not a Jenkins job — runs even if the controller is down.
+
+- name: Ensure jenkins systemd user unit directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_worker_home }}/.config/systemd/user"
+    state: directory
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0755"
+
+- name: Deploy podman-prune service unit
+  ansible.builtin.template:
+    src: podman-prune.service.j2
+    dest: "{{ jenkins_worker_home }}/.config/systemd/user/podman-prune.service"
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0644"
+
+- name: Deploy podman-prune timer unit
+  ansible.builtin.template:
+    src: podman-prune.timer.j2
+    dest: "{{ jenkins_worker_home }}/.config/systemd/user/podman-prune.timer"
+    owner: "{{ jenkins_worker_user }}"
+    group: "{{ jenkins_worker_user }}"
+    mode: "0644"
+
+- name: Enable and start the podman-prune timer
+  ansible.builtin.systemd:
+    name: podman-prune.timer
+    scope: user
+    daemon_reload: true
+    state: started
+    enabled: true
+  become: true
+  become_user: "{{ jenkins_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ jenkins_worker_uid }}"

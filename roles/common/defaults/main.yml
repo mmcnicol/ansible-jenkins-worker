@@ -1,0 +1,19 @@
+---
+# See docs/devops-policy.md §3, §7, §8.
+
+common_base_packages:
+  - chrony
+  - python3
+
+# sshd hardening — actual values come from group_vars/all.yml so they're set
+# once fleet-wide rather than per-role.
+sshd_password_authentication: false
+sshd_permit_root_login: false
+sshd_permit_user_environment: false
+
+# Fleet posture decision, 2026-09 — see docs/jenkins-worker-node.md §9.
+firewalld_enabled: false
+
+# Disable unattended dnf updates — patch deliberately instead (Phase 6
+# `patching` playbook). See docs/devops-policy.md §3.
+common_disable_dnf_automatic: true

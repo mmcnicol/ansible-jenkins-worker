@@ -9,7 +9,35 @@ RHEL 10.
 
 ## Status
 
-Advice / design phase. No playbooks yet — see the docs below.
+Phase 1 prototype: `common` + `jenkins_worker` roles exist and pass
+`ansible-lint` (production profile) and `--syntax-check`, but have **not yet
+been run against a real host** — see [Testing](#testing) below. Every
+version/URL/checksum in `roles/jenkins_worker/defaults/main.yml` is a
+placeholder; override them in a private `group_vars`/`host_vars` file before
+running for real (see `.gitignore`).
+
+## Usage
+
+```
+ansible-galaxy collection install -r collections/requirements.yml
+
+# One-time per new host, using whatever account the DC provisioned:
+ansible-playbook playbooks/bootstrap.yml -l <host> -u <initial-admin> \
+  --ask-pass --ask-become-pass -e "ansible_control_pubkey=$(cat ~/.ssh/id.pub)"
+
+# Then, as the ansible user:
+ansible-playbook playbooks/common.yml -l <host>
+ansible-playbook playbooks/jenkins_worker.yml -l <host>
+ansible-playbook playbooks/smoke_test.yml -l <host>
+```
+
+## Testing
+
+Not yet run against a real RHEL 10 (or AlmaLinux/Rocky 10) host. `yamllint`,
+`ansible-playbook --syntax-check` and `ansible-lint` all pass locally and in
+CI (`.github/workflows/lint.yml`), but that doesn't catch runtime issues —
+wrong module arguments, template logic, ordering. Validate on a real host
+before pointing this at the actual fleet.
 
 ## Docs
 

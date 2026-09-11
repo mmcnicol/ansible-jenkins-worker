@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+# Rootless Podman storage for jenkins, on external storage — see
+# docs/jenkins-worker-node.md §4. Ask the data centre team to map this path
+# to expandable storage: a full image store must not wedge the host.
+[storage]
+driver = "overlay"
+graphroot = "{{ jenkins_worker_containers_dir }}/storage"
+runroot = "/run/user/{{ jenkins_worker_uid }}/containers"

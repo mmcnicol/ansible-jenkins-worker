@@ -1,0 +1,5 @@
+---
+- name: Install worker OS packages
+  ansible.builtin.dnf:
+    name: "{{ jenkins_worker_packages }}"
+    state: present

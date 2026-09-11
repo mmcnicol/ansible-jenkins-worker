@@ -1,0 +1,16 @@
+---
+# See docs/jenkins-worker-node.md §9 for the fleet-wide posture decision
+# (matches existing RHEL 9 fleet: disabled, tracked as a future hardening
+# project). Controlled by `firewalld_enabled` so flipping it later is a
+# one-line change, not a rewrite.
+
+- name: Ensure firewalld package is present
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+
+- name: Set firewalld running/enabled state
+  ansible.builtin.systemd:
+    name: firewalld
+    state: "{{ 'started' if firewalld_enabled else 'stopped' }}"
+    enabled: "{{ firewalld_enabled }}"

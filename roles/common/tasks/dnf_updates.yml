@@ -1,0 +1,23 @@
+---
+# See docs/devops-policy.md §3. Patch deliberately, in a maintenance window,
+# via a future `patching` playbook (Phase 6) — not automatically.
+
+- name: Collect installed-package facts
+  ansible.builtin.package_facts:
+    manager: rpm
+
+- name: Disable and mask dnf-automatic timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop:
+    - dnf-automatic.timer
+    - dnf-automatic-install.timer
+    - dnf-automatic-download.timer
+    - dnf-automatic-notifyonly.timer
+  when:
+    - common_disable_dnf_automatic
+    - "'dnf-automatic' in ansible_facts.packages"
+  failed_when: false
