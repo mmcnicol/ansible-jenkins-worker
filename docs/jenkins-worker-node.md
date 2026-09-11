@@ -209,6 +209,24 @@ cleanup sidecar) under rootless Podman. Disabling it means Testcontainers won't
 auto-remove containers after a crashed/killed JVM — which is exactly what the **prune
 timer** in §5 exists to mop up. Keep both.
 
+> **Live-test finding (corrected after a second round of testing):** an actual
+> `ssh jenkins@host '...'` — the real shape of a controller-launched SSH agent — sources
+> `/etc/profile.d/*.sh` fine: OpenSSH runs both interactive and command-mode sessions as a
+> **login shell**, so `~/.bash_profile` → `~/.bashrc` → `/etc/bashrc` → `/etc/profile.d/*`
+> all fire. The `newman: node: No such file or directory` failure that first suggested
+> otherwise came from testing via `ansible.builtin.command` with `become_user: jenkins`
+> (i.e. `sudo -u jenkins ...`) — `sudo` does **not** invoke a login shell, so it sees
+> neither `/etc/profile.d` nor `~/.ssh/environment` (confirmed directly: `sudo -u jenkins
+> bash -c 'echo $PATH'` on the test VM returns a bare `/sbin:/bin:/usr/sbin:/usr/bin`).
+> That's a gap in `sudo -u jenkins ...`-style troubleshooting, not in the real Jenkins
+> connection.
+>
+> `JAVA_HOME`/`PATH` are still set in **both** places: `/etc/profile.d` for interactive
+> login convenience, and `~jenkins/.ssh/environment` as a second, more direct route that
+> doesn't depend on `jenkins` keeping `/bin/bash` as its login shell or on the
+> `.bash_profile`/`.bashrc` chain staying intact. Redundant on a stock setup (you'll see
+> each tool's directory in `$PATH` twice), harmless, and cheap insurance.
+
 ---
 
 ## 5. Image prune
@@ -356,7 +374,59 @@ role guarantees that.
 
 ## 12. Testing
 
-Per your answer, testing will use **AlmaLinux / Rocky 10** cloud VMs (RHEL 10 rebuilds, no
-subscription friction, behaviour effectively identical for this work). Spun up only when
-role development starts, torn down the same session. Not created now — this phase is
-advice only.
+Per your answer, testing uses **AlmaLinux / Rocky 10** cloud VMs (RHEL 10 rebuilds, no
+subscription friction, behaviour effectively identical for this work), spun up only when
+needed and torn down the same session.
+
+### 12.1 Live-test results (Rocky Linux 10.2, GCP `e2-medium`)
+
+The full `common` + `jenkins_worker` role pair was run end-to-end against a real
+throwaway VM (real JDK/Maven/Flyway/Node/docker-compose downloads and checksums — SQLcl
+skipped via `--tags`, since it has no public URL, see §2). Confirmed working, verified via
+a genuine `ssh jenkins@host` login (the actual shape of a controller-launched SSH agent,
+not just `sudo -u jenkins`): `java -version`, `mvn -v` with correct `JAVA_HOME`, `newman
+--version`, `podman run --rm hello-world` under rootless Podman, `docker-compose
+version`, the shared Podman network, and the `podman-prune.timer` active. A second,
+identical run afterwards reported **zero changes** — the role is idempotent.
+
+Five real bugs surfaced and were fixed as a direct result of this test (none of them
+visible from `ansible-lint`, `--syntax-check`, or reading the role):
+
+1. **`community.general.sefcontext` needs `python3-policycoreutils`** on the target (the
+   `seobject` Python module) — added to `jenkins_worker_packages`.
+2. **`become_user: jenkins` tasks (Podman, npm) need the `acl` package** — without it,
+   Ansible's privilege-escalation temp-file handoff fails with a BSD-ACL-flavoured `chmod`
+   error on Linux — added to `jenkins_worker_packages`.
+3. **SELinux blocks sshd from reading `authorized_keys` when a user's home is outside
+   `/home`** — `/Dev_Data` isn't covered by the system's default home-directory file
+   contexts, so sshd logged `Could not open user 'jenkins' authorized keys ...
+   Permission denied` and key-based login failed outright. Fixed by adding the same
+   three-rule SELinux context pattern the default policy uses for `/home/<user>`
+   (`user_home_dir_t` / `user_home_t` / `ssh_home_t`) targeted at `/Dev_Data/jenkins`
+   instead — see `roles/jenkins_worker/tasks/user.yml`. This is a direct, concrete
+   consequence of choosing `/Dev_Data` over `/home` for service-account homes (policy
+   §2/§8's SELinux note) and is worth knowing before it surprises anyone doing this by
+   hand on a real node.
+4. **`getent subuid <user>` isn't a valid database on Rocky/RHEL 10** (`Unknown database:
+   subuid`) — the subuid/subgid idempotency check always returned non-zero regardless of
+   actual state, so `usermod --add-subuids` re-ran (and reported changed) on every single
+   invocation. Fixed by checking `/etc/subuid` / `/etc/subgid` directly instead.
+5. **The Maven `bin` directory was missing from `PATH`** in both
+   `/etc/profile.d/jdk-default.sh` and `~jenkins/.ssh/environment` — a plain oversight
+   when those were first written, caught immediately by `mvn: command not found` over a
+   real `ssh jenkins@host` session.
+
+One documentation correction came out of this too: an earlier draft of §4.1 claimed
+`/etc/profile.d` never reaches the process a controller launches over SSH. Live testing
+showed that's wrong — OpenSSH runs both interactive and command-mode sessions as **login
+shells**, so `/etc/profile.d` fires normally over a real `ssh jenkins@host` connection.
+The original failure that suggested otherwise came from testing via `sudo -u jenkins`
+(Ansible's `become_user`), which does **not** invoke a login shell and sees neither
+`/etc/profile.d` nor `~jenkins/.ssh/environment` — confirmed directly (`sudo -u jenkins
+bash -c 'echo $PATH'` returns a bare `/sbin:/bin:/usr/sbin:/usr/bin`). Both mechanisms are
+kept regardless — `/etc/profile.d` for interactive convenience, `~/.ssh/environment` as a
+route that doesn't depend on the `.bash_profile`/`.bashrc` chain staying intact — but the
+root-cause explanation is corrected here, and `playbooks/smoke_test.yml`'s Newman check
+now sets `PATH` explicitly rather than assuming ambient dotfiles, since its own
+`become_user`-based checks have exactly the same "no login shell" gap as the scenario
+above.

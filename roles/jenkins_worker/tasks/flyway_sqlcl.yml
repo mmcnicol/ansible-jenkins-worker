@@ -8,6 +8,7 @@
     tool: "{{ jenkins_worker_flyway }}"
     tool_dest_dir: "{{ jenkins_worker_tools_dir }}/flyway"
     tool_marker_file: flyway
+  tags: flyway
 
 # Oracle's SQLcl zip already contains a top-level "sqlcl" directory, so unlike
 # the tar-based tools this one is extracted one level up with no
@@ -18,3 +19,4 @@
     tool: "{{ jenkins_worker_sqlcl | combine({'extra_opts': []}) }}"
     tool_dest_dir: "{{ jenkins_worker_tools_dir }}"
     tool_marker_file: sqlcl/bin/sql
+  tags: sqlcl

@@ -8,6 +8,12 @@
   become: true
   become_user: "{{ jenkins_worker_user | default('jenkins') }}"
   gather_facts: true
+  # This play has no `roles:` entry, so the jenkins_worker role's own
+  # defaults/main.yml is never merged in automatically the way it would be
+  # inside jenkins_worker.yml — pull it in explicitly as a vars_file instead
+  # of duplicating those values here (confirmed missing in a live test run).
+  vars_files:
+    - ../roles/jenkins_worker/defaults/main.yml
   tasks:
     - name: Report CPU cores and memory
       ansible.builtin.debug:
@@ -45,5 +51,12 @@
       changed_when: false
 
     - name: Check Newman is installed
+      # newman's shebang is `#!/usr/bin/env node` — it resolves `node` via
+      # PATH at run time, and `become_user` (sudo) doesn't inherit the PATH
+      # a real SSH login would get from /etc/profile.d or ~/.ssh/environment
+      # (confirmed live — see docs/jenkins-worker-node.md §4.1), so it has to
+      # be supplied explicitly here rather than assumed.
       ansible.builtin.command: "{{ jenkins_worker_home }}/.npm-global/bin/newman --version"
+      environment:
+        PATH: "{{ jenkins_worker_tools_dir }}/node/bin:{{ ansible_env.PATH }}"
       changed_when: false

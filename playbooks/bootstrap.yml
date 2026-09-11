@@ -7,9 +7,16 @@
 # deliberately NOT the inventory default (`ansible_user: ansible`, see
 # inventories/dev/group_vars/all.yml), since that account doesn't exist yet:
 #
+#   echo "ansible_control_pubkey: $(cat ~/.ssh/ansible_control.pub)" > /tmp/bootstrap-vars.yml
 #   ansible-playbook playbooks/bootstrap.yml -l <host> \
 #     -u <initial-admin-account> --ask-pass --ask-become-pass \
-#     -e "ansible_control_pubkey=$(cat ~/.ssh/ansible_control.pub)"
+#     --extra-vars @/tmp/bootstrap-vars.yml
+#
+# Use a --extra-vars file, not an inline `-e key=value`: Ansible's inline
+# `-e` parser treats spaces as separating further key=value pairs, so it
+# silently truncates a multi-word value like a public key at its first
+# space (confirmed against a live test VM — see docs/jenkins-worker-node.md
+# §12). A YAML/JSON extra-vars file doesn't have that problem.
 #
 # ansible_control_pubkey is the PUBLIC key of the key pair the control node
 # will use from then on — never pass a private key or password as an

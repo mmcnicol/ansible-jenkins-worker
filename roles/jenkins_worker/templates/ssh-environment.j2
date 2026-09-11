@@ -1,2 +1,4 @@
 DOCKER_HOST=unix:///run/user/{{ jenkins_worker_uid }}/podman/podman.sock
 TESTCONTAINERS_RYUK_DISABLED=true
+JAVA_HOME={{ jenkins_worker_tools_dir }}/jdk/{{ jenkins_worker_default_jdk }}
+PATH={{ jenkins_worker_tools_dir }}/jdk/{{ jenkins_worker_default_jdk }}/bin:{{ jenkins_worker_tools_dir }}/maven/{{ jenkins_worker_default_maven }}/bin:{{ jenkins_worker_tools_dir }}/flyway:{{ jenkins_worker_tools_dir }}/sqlcl/bin:{{ jenkins_worker_tools_dir }}/node/bin:{{ jenkins_worker_home }}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin

@@ -111,6 +111,8 @@ jenkins_worker_packages:
   - python3
   - podman
   - podman-docker
+  - python3-policycoreutils  # needed by community.general.sefcontext, see podman.yml
+  - acl  # needed for `become_user: jenkins` tasks (podman, npm) to hand off temp files correctly
   - sshpass  # known-debt item, see docs/jenkins-worker-node.md §8 — kept for fleet parity
 
 # --- Image prune timer (see docs/devops-policy.md §5) -------------------------

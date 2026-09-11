@@ -22,6 +22,32 @@
   ansible.builtin.set_fact:
     jenkins_worker_uid: "{{ _jenkins_user.uid }}"
 
+- name: Set SELinux contexts for the jenkins home directory
+  community.general.sefcontext:
+    target: "{{ item.target }}"
+    setype: "{{ item.setype }}"
+    state: present
+  loop:
+    # jenkins's home is on /Dev_Data, not under /home, so the system's
+    # default file-context rules for home directories don't cover it —
+    # sshd silently refuses to read authorized_keys under SELinux without
+    # this (confirmed against a live test VM: "Could not open user 'jenkins'
+    # authorized keys ... Permission denied" — see docs/jenkins-worker-node.md
+    # §12). Mirrors the same three-rule shape the default policy uses for
+    # /home/<user>. The most specific rule wins, so this coexists fine with
+    # podman.yml's more specific rule for the containers subdirectory.
+    - target: "{{ jenkins_worker_home }}"
+      setype: user_home_dir_t
+    - target: "{{ jenkins_worker_home }}(/.*)?"
+      setype: user_home_t
+    - target: "{{ jenkins_worker_home }}/\\.ssh(/.*)?"
+      setype: ssh_home_t
+  loop_control:
+    label: "{{ item.setype }}"
+  register: _jenkins_home_fcontext
+  when: ansible_selinux.status is defined and ansible_selinux.status == "enabled"
+  notify: Apply jenkins home SELinux context
+
 - name: Install authorized_keys for jenkins (controller agent-launch key)
   ansible.posix.authorized_key:
     user: "{{ jenkins_worker_user }}"
@@ -31,13 +57,17 @@
   when: jenkins_worker_authorized_keys | length > 0
 
 - name: Check for an existing subuid range
-  ansible.builtin.command: "getent subuid {{ jenkins_worker_user }}"
+  # Not `getent subuid` — confirmed on a live test VM that "subuid" isn't a
+  # database getent recognises there ("Unknown database: subuid"), which
+  # always returned rc=1 and made the usermod task below re-run, and report
+  # changed, on every single invocation regardless of actual state.
+  ansible.builtin.command: "grep -q ^{{ jenkins_worker_user }}: /etc/subuid"
   register: _subuid_check
   changed_when: false
   failed_when: false
 
 - name: Check for an existing subgid range
-  ansible.builtin.command: "getent subgid {{ jenkins_worker_user }}"
+  ansible.builtin.command: "grep -q ^{{ jenkins_worker_user }}: /etc/subgid"
   register: _subgid_check
   changed_when: false
   failed_when: false

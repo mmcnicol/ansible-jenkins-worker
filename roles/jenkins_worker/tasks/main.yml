@@ -1,10 +1,14 @@
 ---
 # See docs/jenkins-worker-node.md for the design rationale behind each step.
+# Each step is tagged so it can be targeted independently, e.g.
+# `--tags jdk,maven` or `--skip-tags sqlcl` (SQLcl needs an internally staged
+# URL — see roles/jenkins_worker/defaults/main.yml).
 
 - name: Assert /Dev_Data exists and is writable
   ansible.builtin.stat:
     path: "{{ dev_data_mount }}"
   register: _dev_data_stat
+  tags: always
 
 - name: Fail fast if /Dev_Data is missing
   ansible.builtin.assert:
@@ -14,39 +18,51 @@
     fail_msg: >-
       {{ dev_data_mount }} does not exist. This must be provisioned by the data
       centre team before this role runs — see docs/server-profiles.md.
+  tags: always
 
 - name: Install OS packages (dnf)
   ansible.builtin.include_tasks: packages.yml
+  tags: packages
 
 - name: Create the jenkins user
   ansible.builtin.include_tasks: user.yml
+  tags: user
 
 - name: Install pinned JDKs
   ansible.builtin.include_tasks: jdk.yml
+  tags: jdk
 
 - name: Install pinned Maven
   ansible.builtin.include_tasks: maven.yml
+  tags: maven
 
 - name: Deploy Maven settings.xml
   ansible.builtin.include_tasks: maven_settings.yml
+  tags: maven_settings
 
 - name: Install Flyway and SQLcl
   ansible.builtin.include_tasks: flyway_sqlcl.yml
 
 - name: Set default JDK / JAVA_HOME for interactive use
   ansible.builtin.include_tasks: profile.yml
+  tags: profile
 
 - name: Configure rootless Podman
   ansible.builtin.include_tasks: podman.yml
+  tags: podman
 
 - name: Install docker-compose binary
   ansible.builtin.include_tasks: docker_compose.yml
+  tags: docker_compose
 
 - name: Install Node.js and Newman
   ansible.builtin.include_tasks: node_newman.yml
+  tags: [node, newman]
 
 - name: Deploy jenkins user SSH environment
   ansible.builtin.include_tasks: ssh_environment.yml
+  tags: ssh_environment
 
 - name: Configure image prune timer
   ansible.builtin.include_tasks: prune.yml
+  tags: prune
